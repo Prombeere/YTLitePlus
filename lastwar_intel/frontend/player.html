@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Player – Last War Intel</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="bg-grid"></div>
+
+<header>
+  <a class="logo" href="/">⚔ LAST WAR INTEL</a>
+  <div id="stats-bar"></div>
+</header>
+
+<main class="player-page" id="playerPage">
+  <div class="loading">Loading...</div>
+</main>
+
+<script>
+const [,, server, name] = window.location.pathname.split('/');
+
+async function load() {
+  const p = await fetch(`/api/player/${server}/${name}`).then(r=>r.ok?r.json():null).catch(()=>null);
+  const page = document.getElementById('playerPage');
+
+  if (!p) {
+    page.innerHTML = '<div class="not-found">Player not found</div>';
+    return;
+  }
+
+  document.title = `${p.name} – Last War Intel`;
+
+  const shield = p.shield_active
+    ? (p.shield_expires ? `🛡 ${fmtShield(p.shield_expires)}` : '🛡 Shield Active')
+    : '❌ No Shield';
+
+  page.innerHTML = `
+    <a class="back-btn" href="/">← Back</a>
+
+    <div class="player-header">
+      <div class="player-name">${esc(p.name)}</div>
+      <div class="player-meta">Server #${p.server} · Last seen ${p.last_seen ? timeAgo(p.last_seen) : '–'}</div>
+    </div>
+
+    <div class="cards">
+      <div class="card highlight">
+        <div class="card-label">Power</div>
+        <div class="card-value">${fmtNum(p.power)}</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Level</div>
+        <div class="card-value">${p.level ?? '–'}</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Army Kills</div>
+        <div class="card-value">${fmtNum(p.army_kills)}</div>
+      </div>
+      <div class="card ${p.shield_active ? 'shield-card' : 'noshield-card'}">
+        <div class="card-label">Shield</div>
+        <div class="card-value">${shield}</div>
+      </div>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-section">
+        <div class="section-title">VIP Info</div>
+        <div class="info-row"><span>VIP Level</span><span>${p.vip_level != null ? `VIP ${p.vip_level}` : '–'}</span></div>
+        <div class="info-row"><span>VIP Score</span><span>${fmtNum(p.vip_score)}</span></div>
+        <div class="info-row"><span>Gift Level</span><span>${p.gift_level ?? '–'}</span></div>
+      </div>
+
+      <div class="info-section">
+        <div class="section-title">Alliance</div>
+        <div class="info-row"><span>Alliance</span><span>${esc(p.alliance ?? '–')}</span></div>
+        <div class="info-row"><span>Rank</span><span>${p.alliance_rank ?? '–'}</span></div>
+      </div>
+
+      <div class="info-section">
+        <div class="section-title">Progress</div>
+        <div class="info-row"><span>Career Level</span><span>${p.career_level ?? '–'}</span></div>
+        <div class="info-row"><span>Army Kills</span><span>${fmtNum(p.army_kills)}</span></div>
+      </div>
+
+      ${p.coord_x != null ? `
+      <div class="info-section">
+        <div class="section-title">Location</div>
+        <div class="info-row"><span>Coordinates</span><span>${p.coord_x} : ${p.coord_y}</span></div>
+      </div>` : ''}
+    </div>
+  `;
+}
+
+function fmtNum(n) {
+  if (!n && n !== 0) return '–';
+  return n.toLocaleString();
+}
+function fmtShield(ts) {
+  const rem = ts - Date.now()/1000;
+  if (rem <= 0) return 'Expired';
+  const h = Math.floor(rem/3600), m = Math.floor((rem%3600)/60);
+  return `${h}h ${m}m remaining`;
+}
+function timeAgo(ts) {
+  const diff = Date.now()/1000 - ts;
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+  if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
+  return Math.floor(diff/86400) + 'd ago';
+}
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+load();
+</script>
+</body>
+</html>
