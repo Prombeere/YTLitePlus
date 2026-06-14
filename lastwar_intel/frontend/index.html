@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Last War Intel</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="bg-grid"></div>
+
+<header>
+  <div class="logo">⚔ LAST WAR INTEL</div>
+  <div id="stats-bar">
+    <span id="stat-players">– players</span>
+    <span id="stat-servers">– servers</span>
+    <span id="stat-updated">–</span>
+  </div>
+</header>
+
+<main class="search-page">
+  <h1>Kingdom Intelligence</h1>
+  <p class="subtitle">Search players across all servers</p>
+
+  <div class="search-box">
+    <input id="searchInput" type="text" placeholder="Search player or alliance..." autocomplete="off" autofocus>
+    <select id="serverFilter"><option value="">All Servers</option></select>
+    <button id="searchBtn">Search</button>
+  </div>
+
+  <div id="results-info"></div>
+
+  <div class="table-wrap">
+    <table id="resultsTable" style="display:none">
+      <thead>
+        <tr>
+          <th>Player</th>
+          <th>Server</th>
+          <th>Power</th>
+          <th>Level</th>
+          <th>VIP</th>
+          <th>Alliance</th>
+          <th>Rank</th>
+          <th>Shield</th>
+          <th>Last Seen</th>
+        </tr>
+      </thead>
+      <tbody id="resultsBody"></tbody>
+    </table>
+  </div>
+
+  <div class="pagination" id="pagination"></div>
+</main>
+
+<script>
+const API = '';
+let currentPage = 0;
+
+async function loadStats() {
+  const s = await fetch(`${API}/api/stats`).then(r=>r.json()).catch(()=>null);
+  if (!s) return;
+  document.getElementById('stat-players').textContent = s.total_players.toLocaleString() + ' players';
+  document.getElementById('stat-servers').textContent = s.total_servers + ' servers';
+  if (s.last_update) {
+    const d = new Date(s.last_update * 1000);
+    document.getElementById('stat-updated').textContent = 'Updated ' + timeAgo(s.last_update);
+  }
+}
+
+async function loadServers() {
+  const servers = await fetch(`${API}/api/servers`).then(r=>r.json()).catch(()=>[]);
+  const sel = document.getElementById('serverFilter');
+  servers.forEach(s => {
+    const o = document.createElement('option');
+    o.value = s.server;
+    o.textContent = `#${s.server} (${s.count})`;
+    sel.appendChild(o);
+  });
+}
+
+async function doSearch(page = 0) {
+  currentPage = page;
+  const q = document.getElementById('searchInput').value.trim();
+  const server = document.getElementById('serverFilter').value;
+  const params = new URLSearchParams({ q, server, page, per_page: 50 });
+  const data = await fetch(`${API}/api/search?${params}`).then(r=>r.json()).catch(()=>null);
+  if (!data) return;
+
+  const tbody = document.getElementById('resultsBody');
+  const table = document.getElementById('resultsTable');
+  const info = document.getElementById('results-info');
+
+  tbody.innerHTML = '';
+  if (data.players.length === 0) {
+    table.style.display = 'none';
+    info.textContent = 'No players found.';
+    return;
+  }
+
+  info.textContent = `${data.total.toLocaleString()} results`;
+  table.style.display = '';
+  data.players.forEach(p => {
+    const shield = p.shield_active
+      ? (p.shield_expires ? `🛡 ${fmtShield(p.shield_expires)}` : '🛡 Active')
+      : '–';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><a href="/player/${p.server}/${encodeURIComponent(p.name)}">${esc(p.name)}</a></td>
+      <td>#${p.server}</td>
+      <td>${fmtNum(p.power)}</td>
+      <td>${p.level ?? '–'}</td>
+      <td>${p.vip_level != null ? `VIP ${p.vip_level}` : '–'}</td>
+      <td>${esc(p.alliance ?? '–')}</td>
+      <td>${p.alliance_rank ?? '–'}</td>
+      <td class="${p.shield_active ? 'shield-on' : ''}">${shield}</td>
+      <td>${p.last_seen ? timeAgo(p.last_seen) : '–'}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  // Pagination
+  const pages = Math.ceil(data.total / data.per_page);
+  const pag = document.getElementById('pagination');
+  pag.innerHTML = '';
+  if (pages > 1) {
+    for (let i = 0; i < Math.min(pages, 10); i++) {
+      const btn = document.createElement('button');
+      btn.textContent = i + 1;
+      if (i === page) btn.classList.add('active');
+      btn.onclick = () => doSearch(i);
+      pag.appendChild(btn);
+    }
+  }
+}
+
+function fmtNum(n) {
+  if (!n) return '–';
+  if (n >= 1e9) return (n/1e9).toFixed(2) + 'B';
+  if (n >= 1e6) return (n/1e6).toFixed(2) + 'M';
+  return n.toLocaleString();
+}
+
+function fmtShield(ts) {
+  const rem = ts - Date.now()/1000;
+  if (rem <= 0) return 'Expired';
+  const h = Math.floor(rem/3600), m = Math.floor((rem%3600)/60);
+  return `${h}h ${m}m`;
+}
+
+function timeAgo(ts) {
+  const diff = Date.now()/1000 - ts;
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+  if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
+  return Math.floor(diff/86400) + 'd ago';
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+document.getElementById('searchBtn').addEventListener('click', () => doSearch(0));
+document.getElementById('searchInput').addEventListener('keydown', e => { if(e.key==='Enter') doSearch(0); });
+
+loadStats();
+loadServers();
+doSearch(0);
+</script>
+</body>
+</html>
